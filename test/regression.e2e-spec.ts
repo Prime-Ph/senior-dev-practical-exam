@@ -20,7 +20,7 @@ describe('Reservation incident regressions', () => {
     const failed = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
     expect(failed.reason.getStatus()).toBe(409);
     expect((await inventory(app)).body.available).toBe(1);
-    const rows = (await list(app)).body;
+    const rows = (await list(app)).body.items;
     expect(rows).toHaveLength(1);
     expect(rows.reduce((total: number, row: { quantity: number }) => total + row.quantity, 0)).toBe(2);
   });
@@ -31,14 +31,14 @@ describe('Reservation incident regressions', () => {
       service.create('alpha', 'same-key', { itemId: 'desk', quantity: 1 })));
     expect(new Set(rows.map((row) => row.id)).size).toBe(1);
     expect((await inventory(app)).body.available).toBe(2);
-    expect((await list(app)).body).toHaveLength(1);
+    expect((await list(app)).body.items).toHaveLength(1);
   });
 
   it('rejects a changed payload for a completed key', async () => {
     await reserve(app, 'changed').expect(201);
     await reserve(app, 'changed', { itemId: 'desk', quantity: 2 }).expect(409);
     expect((await inventory(app)).body.available).toBe(2);
-    expect((await list(app)).body).toHaveLength(1);
+    expect((await list(app)).body.items).toHaveLength(1);
   });
 
   it('scopes identical keys independently to each tenant', async () => {
@@ -54,14 +54,14 @@ describe('Reservation incident regressions', () => {
     const alpha = await reserve(app, 'alpha-booking').expect(201);
     await request(app.getHttpServer()).get(`/reservations/${alpha.body.id}`)
       .set('Authorization', 'Bearer demo-beta').expect(404);
-    expect((await list(app, 'beta')).body).toEqual([]);
-    expect((await list(app, 'alpha')).body).toHaveLength(1);
+    expect((await list(app, 'beta')).body.items).toEqual([]);
+    expect((await list(app, 'alpha')).body.items).toHaveLength(1);
   });
 
   it.each([0, -1, 1.5, '1', null, Number.MAX_SAFE_INTEGER + 1])('rejects invalid quantity %p without mutation', async (quantity) => {
     await reserve(app, 'invalid', { itemId: 'desk', quantity }).expect(400);
     expect((await inventory(app)).body.available).toBe(3);
-    expect((await list(app)).body).toEqual([]);
+    expect((await list(app)).body.items).toEqual([]);
   });
 
   it('requires a valid idempotency key', async () => {
@@ -69,7 +69,7 @@ describe('Reservation incident regressions', () => {
       .set('Authorization', 'Bearer demo-alpha')
       .send({ itemId: 'desk', quantity: 1 }).expect(400);
     expect((await inventory(app)).body.available).toBe(3);
-    expect((await list(app)).body).toEqual([]);
+    expect((await list(app)).body.items).toEqual([]);
   });
 
   it('rejects unknown properties before mutating stock', async () => {
@@ -82,9 +82,9 @@ describe('Reservation incident regressions', () => {
     app.get(InMemoryStore).failNextReservationWrite();
     await reserve(app, 'retry-after-failure').expect(500);
     expect((await inventory(app)).body.available).toBe(3);
-    expect((await list(app)).body).toEqual([]);
+    expect((await list(app)).body.items).toEqual([]);
     await reserve(app, 'retry-after-failure').expect(201);
     expect((await inventory(app)).body.available).toBe(2);
-    expect((await list(app)).body).toHaveLength(1);
+    expect((await list(app)).body.items).toHaveLength(1);
   });
 });

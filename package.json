@@ -2,7 +2,7 @@
   "name": "senior-nestjs-practical-exam",
   "version": "1.0.0",
   "private": true,
-  "description": "Repair a multi-tenant reservation incident and defend the solution",
+  "description": "Scale a multi-tenant reservation API and defend the solution",
   "engines": { "node": "^22.0.0 || ^24.0.0" },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -11,7 +11,9 @@
     "test": "jest --runInBand",
     "test:smoke": "jest --runInBand test/smoke.e2e-spec.ts",
     "test:regression": "jest --runInBand test/regression.e2e-spec.ts",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "test:scalability": "jest --runInBand test/scalability.e2e-spec.ts",
+    "bench": "npm run build && node scripts/benchmark.mjs"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",

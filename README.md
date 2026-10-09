@@ -1,172 +1,167 @@
 # Senior NestJS Practical Exam
 
-## Assignment: repair the reservation incident
+## Assignment: scale the reservation API
 
-You have inherited a small multi-tenant inventory reservation API. Support reports
-that simultaneous bookings can reserve more inventory than exists, retries sometimes
-create unexpected results, and one customer has seen another customer's booking.
-Your task is to reproduce the problems, find their causes, and repair the API.
+The reservation API works in a single application instance, but throughput drops
+as traffic and reservation history grow. After adding a second API instance,
+concurrent requests can oversell stock or create duplicate reservations.
 
-**Time limit:** 60 minutes of implementation, followed by a 45-minute technical
-defense. The interviewer starts the clock after installation and the smoke checks.
-If you run out of time, document unfinished work and its impact.
+Fix the scalability problems and demonstrate the improvement. Preserve stock
+consistency, idempotency, tenant isolation, validation, and failure recovery.
 
-Suggested pacing: 10 minutes to reproduce and inspect, 30 minutes to implement
-focused fixes, 15 minutes to verify and add regression coverage, and 5 minutes to
-complete the submission notes. Keep the notes concise; production architecture is
-a discussion topic, not an implementation requirement.
+**Time limit: 60-minute exam, followed by a 45-minute technical defense.**
+The clock starts after installation, build, and smoke checks. Suggested pacing:
+10 minutes to investigate, 30 to implement, 15 to test/measure, and 5 for notes.
 
-**AI is allowed.** You may use coding assistants, search, documentation, and libraries.
-You are responsible for every submitted line and must be able to explain, test, and
-modify your solution during the follow-up. Record meaningful AI assistance in
-`SUBMISSION.md`; raw chat transcripts are not required. AI use itself is not penalized.
+**AI is allowed.** Record meaningful assistance in `SUBMISSION.md`. You must
+explain and defend every change. During the ten-minute live defense exercise,
+work without AI; documentation is allowed.
 
 ## Setup
 
-Use Node.js 22 or 24 and npm. This project uses NestJS 11, TypeScript, Jest, and
-Supertest. No Docker, database, external account, or paid service is required.
+Use Node.js 22 or 24 and npm. No Docker, database installation, external account,
+or paid service is needed.
 
 ```sh
 npm ci
 npm run build
 npm run test:smoke
 npm run test:regression
+npm run test:scalability
+npm run bench
 npm start
 ```
 
-The build and smoke tests should pass on the starter. Regression tests intentionally
-fail: they describe required behavior. `npm test` runs both suites. Keep the supplied
-tests and acceptance criteria; add your own tests for missing cases. If a test seems
-incorrect, document why and discuss it rather than weakening an assertion.
+Build, smoke checks, and single-instance regression tests pass on the starter.
+Seven of the nine scalability tests intentionally fail. `npm test` runs all
+three suites. Keep supplied assertions; add tests for gaps in your solution.
 
-The server listens on `http://127.0.0.1:3000` by default; `PORT` overrides the port.
-Restarting it resets the in-memory fixtures. Each test gets an isolated application.
+The server runs at `http://127.0.0.1:3000`; `PORT` overrides the port.
+Restarting resets its data. Tests create isolated apps unless sharing a backend.
 
-## Fixtures and authentication
+## Required changes
 
-Every route requires a demo bearer token. The guard derives tenant identity from the
-token; the client must never choose its tenant through a body or header override.
-These tokens and the in-memory storage are exam fixtures, not production security.
+1. **Correct coordination across instances.** Separate NestJS applications share
+   one storage fixture but have independent service instances and queues. Protect
+   stock and tenant-scoped idempotency at the shared storage boundary. A queue or
+   mutex in one API instance cannot coordinate another instance.
+2. **Concurrency without a global bottleneck.** A stalled request for Alpha's
+   `desk` must not block Alpha's `room` or Beta's `desk`. Preserve correctness for
+   a hot item and for a key reused across different items. Explain lock scope,
+   ordering, cleanup, and the limits of your approach.
+3. **Read cost independent of history size.** A key lookup must inspect at most
+   one reservation, and a page of size `limit` at most `limit + 1` reservations,
+   regardless of history size, tenant count, or cursor position. Maintain accurate
+   `keyRowsVisited` and `listRowsVisited` instrumentation. Do not merely return a
+   smaller response after scanning all records.
 
-| Token | Tenant | Item | Initial availability |
-| --- | --- | --- | ---: |
-| `demo-alpha` | `alpha` | `desk` | 3 |
-| `demo-alpha` | `alpha` | `room` | 2 |
-| `demo-beta` | `beta` | `desk` | 10 |
-| `demo-beta` | `beta` | `beta-only` | 4 |
+Run the supplied benchmark before and after. Report the same workload settings,
+throughput, p50/p95 latency, statuses, row visits, and consistency checks. There
+is no fixed latency target: measured improvement and correct reasoning matter.
 
-## API contract to preserve
+## Shared-storage fixture
 
-| Route | Success | Behavior |
-| --- | --- | --- |
-| `POST /reservations` | 201 | Create a reservation or replay a completed request. Requires `Idempotency-Key`. |
-| `GET /reservations` | 200 | Return an array of the authenticated tenant's reservations. |
-| `GET /reservations/:id` | 200 | Read an owned reservation; unknown or foreign IDs return 404. |
-| `GET /inventory/:itemId` | 200 | Return `{ tenantId, itemId, available }` for the authenticated tenant; unknown/foreign items return 404. |
+`createApp(backend)` creates an independent application. Two calls with the same
+`SharedStorageBackend` share data and storage coordination, but not service queues.
+Tests start both applications before issuing overlapping requests.
 
-POST body: `{ "itemId": "desk", "quantity": 1 }`. Successful response:
+The backend supplies asynchronous I/O, ordered resource locks via
+`transaction(resourceKeys, work)`, staged writes, and atomic publication/failure.
+The starter uses an application-wide queue and empty transaction resource keys.
+You may change service/storage interfaces and add indexes. Keep the asynchronous
+boundary, accurate metrics, transaction failure guarantees, and test seams.
 
-```json
-{
-  "id": "generated-id",
-  "tenantId": "alpha",
-  "itemId": "desk",
-  "quantity": 1,
-  "idempotencyKey": "booking-001"
-}
-```
+This is a **single-process simulation of multiple API instances using shared
+storage**. Its in-memory locks do not coordinate OS processes and its data is not
+durable. You are assessed on this fixture and on a concrete production design
+using database transactions, indexes, and constraints. Implementing a real
+distributed service or database is outside the sixty-minute scope.
 
-Rules:
+Test-only methods include `pauseNextStockRead`, `failNextReservationWrite`,
+`seedHistoricalReservations`, `setStockForFixture`, and `resetMetrics`. They
+have no HTTP endpoints. Historical records concern a retired item and are not
+new reservations deducted from the current stock fixtures.
 
-1. `quantity` must be a JSON number that is a positive safe integer. Strings, zero,
-   negatives, fractions, null, missing values, and unsafe integers return 400.
-2. `itemId` must be a string of 1-64 characters matching `[A-Za-z0-9_-]+`.
-   `Idempotency-Key` must be 1-64 characters with the same pattern. Missing, blank,
-   or malformed keys return 400. Unknown body properties return 400. Do not silently
-   coerce or trim invalid inputs. Validate before any state mutation or replay.
-3. Missing or unrecognized bearer tokens return 401. Body fields or `X-Tenant-Id`
-   must never override the authenticated identity.
-4. If stock is insufficient, return 409 with no stock or reservation change.
-   Stock must never become negative, and the sum of committed quantities must agree
-   with the stock deduction, including under concurrent requests.
-5. A tenant's successful key plus identical `{ itemId, quantity }` returns the
-   original reservation, including its ID, without another deduction. Concurrent
-   identical retries must also produce one reservation and one deduction.
-6. Reusing a successful key with a different item or quantity returns 409, with no
-   additional mutation. Keys are scoped to the tenant, across that tenant's items.
-   Two tenants may use the same key independently.
-7. Stock deduction and reservation persistence must succeed or fail together.
-   Storage failures return 500, leave no partial mutation, and do not poison the key:
-   retrying after the failure may succeed. Failed requests do not consume a key.
-8. Reads must never reveal another tenant's reservations or inventory. A foreign
-   reservation ID returns the same 404 behavior as an unknown ID.
+## API and fixtures
 
-Error response wording is your choice; status codes and state guarantees are required.
+All routes require `Authorization: Bearer demo-alpha` or `Bearer demo-beta`.
+Tenant identity comes from the token. Initial availability:
 
-## Try the incident
+| Tenant | Item | Available |
+| --- | --- | ---: |
+| alpha | desk | 3 |
+| alpha | room | 2 |
+| beta | desk | 10 |
+| beta | beta-only | 4 |
 
-With the app running, this portable Node command sends two competing requests for
-two desks each. Correct behavior is one 201 and one 409, with one desk remaining.
-On the starter, both may succeed. Restart before a fresh manual reproduction.
+| Route | Contract |
+| --- | --- |
+| `POST /reservations` | 201; requires `Idempotency-Key` and `{ "itemId": "desk", "quantity": 1 }`. |
+| `GET /reservations?limit=20&cursor=0` | 200; returns `{ items, nextCursor }`. |
+| `GET /reservations/:id` | 200 for an owned reservation; 404 for unknown or foreign IDs. |
+| `GET /inventory/:itemId` | 200 with `{ tenantId, itemId, available }`; 404 for missing or foreign inventory. |
 
-```sh
-node scripts/reproduce.mjs
-```
+Reservation shape: `{ id, tenantId, itemId, quantity, idempotencyKey }`.
 
-You can also create a reservation as Alpha and attempt to retrieve its returned ID
-as Beta. The correct response is 404. The supplied tests cover selected symptoms;
-passing only those tests is not a complete solution.
+Preserve these requirements:
 
-## Scope and constraints
+- Quantity is a positive JSON safe integer. Item/key strings contain only
+  letters, digits, underscores, or hyphens, with length 1-64. Invalid input
+  or unknown body fields return 400 before replay or mutation; invalid auth returns 401.
+- Insufficient stock returns 409 without mutation. Committed quantities must
+  match stock deductions; non-negative final stock alone is insufficient.
+- Identical retries return the original reservation, including its ID, without
+  another deduction. A changed item/quantity for a completed tenant key returns
+  409. Keys span items within a tenant; different tenants may reuse a key.
+- Persistence failure returns 500 with no partial writes or consumed key.
+  A later retry and unrelated requests must still work.
+- Lists contain only the authenticated tenant's rows, in commit order.
+  `limit` defaults to 20 and must be an integer from 1 to 100.
+  The fixture cursor is a non-negative safe integer string identifying a
+  tenant-local position in an append-only history. Omitted cursor starts at 0.
+  `nextCursor` is a string, or null at the end. Invalid parameters return 400;
+  a cursor beyond the end returns `{ items: [], nextCursor: null }`.
+  Explain how a production indexed/keyset cursor would differ from SQL OFFSET.
 
-- Repair the existing NestJS app. Keep route names, success shapes, auth fixtures,
-  and status contracts. You may refactor services, providers, storage APIs, and DTOs.
-- Implement correct behavior for **one running Node process** with in-memory data.
-  A process-local lock is acceptable if justified. Do not claim that it protects
-  multiple instances or survives restarts. Discuss the durable production design
-  in your submission; implementing PostgreSQL or Redis is not required.
-- Storage methods deliberately yield to simulate I/O. Preserve an asynchronous
-  storage boundary so the fix addresses concurrency instead of removing the yield.
-- The storage adapter exposes `failNextReservationWrite()` for failure tests. Keep
-  an equivalent test-only failure mechanism; do not expose a debug HTTP endpoint.
-- Do not hard-code fixture-specific answers, disable authentication, skip tests,
-  or replace the application with a new project. No UI or deployment is needed.
-- Prioritize correctness and maintainability. Extra frameworks, endpoints, and
-  speculative features earn no extra credit.
+Validation and tenant isolation are already implemented. Keep them working.
 
-## What to submit
+## Measure and submit
 
-Submit your changed source, added tests, and completed `SUBMISSION.md` through the
-interviewer's agreed channel. Include the lockfile if dependencies change. Exclude
-`node_modules`, build output, credentials, and private/company data.
+`npm run bench` runs hot-item, independent-item, and retry-burst workloads against
+one and two application instances. It seeds 10,000 historical rows per tenant
+and injects 1 ms storage I/O. Defaults: 100 requests, concurrency 10.
+Non-retry workloads include 20% paginated reads. Environment variables `REQUESTS`,
+`CONCURRENCY`, `HISTORY`, and `IO_DELAY_MS` adjust the same workload before/after.
 
-Your submission must include:
+Report the exact settings. This local synthetic test is not a production
+capacity estimate. Check stock/committed writes and retry IDs alongside speed.
+Explain what happens as history, concurrent clients, or hot-key traffic increases.
+Correct coordination may reduce apparent hot-item throughput when the baseline
+was accepting inconsistent writes. Explain this trade-off alongside the gains
+for independent work; do not trade correctness for a higher request count.
 
-- A reproduction and root-cause explanation for each problem you fixed.
-- The chosen fix, alternatives considered, and why you chose it.
-- Commands and results for build/tests, including any known failures.
-- Remaining limitations and a specific plan for multiple API instances and durable
-  storage, with consistency guarantees explained.
-- A short AI-use log: what you asked it to do, what you accepted/rejected, and how
-  you verified its output. Write `None` if you did not use AI.
+Submit source, added tests, and a concise `SUBMISSION.md` with:
 
-## Technical defense
+- Root causes and the fixes, including alternatives and trade-offs.
+- Before/after benchmark output and test/build results.
+- Index/transaction boundaries, complexity, and memory/retention costs.
+- A production plan: database schema/indexes, uniqueness constraints, locking
+  or conditional updates, retries, connection limits, and overload handling.
+- Remaining limitations and the AI-use log.
 
-Be ready to trace one request through the NestJS lifecycle, show the original
-failure and a regression test, explain how overlapping requests are ordered,
-defend your atomicity and tenant boundaries, compare alternatives, and make a
-small change with a test. The interviewer will ask about your actual diff. During
-the ten-minute live change, drive without AI; normal documentation is allowed.
+Keep the app runnable; do not skip checks, alter metrics to hide scans, remove
+I/O yields, hard-code fixture answers, or add debug HTTP endpoints. No UI or
+deployment is required.
 
-Evaluation considers correctness (35%), meaningful regression tests (20%), design
-and trade-offs (15%), and your technical defense (30%). A polished submission is
-not sufficient if you cannot explain or adapt it. Honest limitations and partial
-progress are more useful than unsupported claims.
+## Defense and scoring
 
-## Reference documentation
+Be ready to demonstrate cross-instance correctness, explain contention and
+lookup/page complexity, defend benchmark methodology, adapt a test, and describe
+production failure/overload behavior.
 
-- [NestJS testing](https://docs.nestjs.com/fundamentals/testing)
-- [NestJS 11 validation](https://docs.nestjs.com/v11/techniques/validation)
+Scoring: scalability 35%, correctness 20%, tests/evidence 15%, technical defense
+30%. A working solution must also be explainable and defensible.
 
-This assessment deliberately remains on NestJS 11; a framework upgrade is not part
-of the task. References are optional and are not a prescribed solution.
+References: [NestJS testing](https://docs.nestjs.com/fundamentals/testing) and
+[NestJS 11 validation](https://docs.nestjs.com/v11/techniques/validation).
+This assessment stays on NestJS 11; a framework upgrade is not part of the task.

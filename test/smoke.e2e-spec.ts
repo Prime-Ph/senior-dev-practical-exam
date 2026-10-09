@@ -28,7 +28,7 @@ describe('Starter smoke checks', () => {
   it('rejects insufficient stock without mutation', async () => {
     await reserve(app, 'too-many', { itemId: 'desk', quantity: 4 }).expect(409);
     expect((await inventory(app)).body.available).toBe(3);
-    expect((await list(app)).body).toEqual([]);
+    expect((await list(app)).body.items).toEqual([]);
   });
 
   it('returns 404 for unknown and foreign inventory', async () => {

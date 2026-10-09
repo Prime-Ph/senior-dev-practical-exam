@@ -3,27 +3,29 @@
 Candidate:
 Implementation time used:
 
-## Reproduction and root causes
+## Diagnosis and changes
 
-For each issue: observed behavior, minimal reproduction, root cause, and affected
-file/method. Include a request interleaving where relevant.
+Identify the bottlenecks and cross-instance failures. Explain each fix, its
+coordination/index boundary, a credible alternative, and the trade-off.
 
-## Changes and decisions
+## Before/after evidence
 
-For each fix: what changed, why it works, alternatives considered, and trade-offs.
-State the invariants protected and the boundary of each guarantee.
+Include build/test results and benchmark output with identical settings:
+instances, requests, concurrency, history, simulated I/O, throughput, p50/p95,
+statuses, row visits, committed writes, stock consistency, and replay IDs.
 
-## Verification
+## Complexity and limits
 
-Commands run, results, regression tests added, and known failures. Explain how
-the important tests fail on the original implementation and pass on your fix.
+Explain key lookup and page complexity, hot-key contention, lock ordering and
+cleanup, index memory, retention, and the limits of the shared in-memory fixture.
 
-## Production plan and remaining limitations
+## Production design
 
-Explain persistence, transactions, multi-instance concurrency, idempotency
-constraints, failure recovery, observability, rollout, and what you deferred.
+Outline database tables/indexes, tenant/key uniqueness, indexed pagination,
+transaction/isolation rules, safe retries, connection limits, overload handling,
+and the metrics you would monitor. No deployment or infrastructure is required.
 
 ## AI-use log
 
-Tool(s), meaningful tasks/prompts, accepted or rejected suggestions, and how you
-verified them. Raw transcripts are optional. Write `None` if unused.
+Tools, meaningful prompts/tasks, accepted or rejected suggestions, and independent
+verification. Write `None` if unused.

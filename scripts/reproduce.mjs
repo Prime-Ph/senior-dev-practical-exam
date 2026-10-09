@@ -1,7 +1,7 @@
 const base = process.env.API_URL ?? 'http://127.0.0.1:3000';
 try {
   const responses = await Promise.all(['manual-a', 'manual-b'].map(async (key) => {
-    const response = await fetch(`${base}/reservations`, {
+    const response = await fetch(base + '/reservations', {
       method: 'POST',
       headers: {
         Authorization: 'Bearer demo-alpha',
@@ -13,12 +13,9 @@ try {
     return { key, status: response.status, body: await response.json() };
   }));
   console.log(JSON.stringify(responses, null, 2));
-  const stock = await fetch(`${base}/inventory/desk`, {
-    headers: { Authorization: 'Bearer demo-alpha' },
-  });
-  console.log('Remaining stock:', await stock.json());
-  console.log('Expected from fresh fixtures: statuses 201 and 409; availability 1.');
+  console.log('Single-instance control: one 201 and one 409 from fresh fixtures.');
+  console.log('For the cross-instance incident, run npm run test:scalability or npm run bench.');
 } catch (error) {
-  console.error('Start the app with npm start before running the reproduction.', error.message);
+  console.error('Start the app with npm start first.', error.message);
   process.exitCode = 1;
 }
