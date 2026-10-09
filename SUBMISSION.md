@@ -1,31 +1,29 @@
 # Candidate submission
 
 Candidate:
-Implementation time used:
+Time used:
 
-## Diagnosis and changes
+## Fixes and reasoning
 
-Identify the bottlenecks and cross-instance failures. Explain each fix, its
-coordination/index boundary, a credible alternative, and the trade-off.
+| Item | Root cause and fix | Why this approach / main trade-off |
+| --- | --- | --- |
+| Rate limiting | | |
+| Cache | | |
+| N+1 query | | |
 
-## Before/after evidence
+## Evidence
 
-Include build/test results and benchmark output with identical settings:
-instances, requests, concurrency, history, simulated I/O, throughput, p50/p95,
-statuses, row visits, committed writes, stock consistency, and replay IDs.
+Build/test results:
+Rate limit: allowed/blocked requests, reset, and independent users:
+Cache: SQL counts before/after, expiry, and invalidation:
+N+1: SQL counts before/after at two page sizes:
 
-## Complexity and limits
+## Limitations
 
-Explain key lookup and page complexity, hot-key contention, lock ordering and
-cleanup, index memory, retention, and the limits of the shared in-memory fixture.
+What would change with multiple API instances or substantially more data?
+Describe the next step; implementation is not required.
 
-## Production design
+## AI use
 
-Outline database tables/indexes, tenant/key uniqueness, indexed pagination,
-transaction/isolation rules, safe retries, connection limits, overload handling,
-and the metrics you would monitor. No deployment or infrastructure is required.
-
-## AI-use log
-
-Tools, meaningful prompts/tasks, accepted or rejected suggestions, and independent
-verification. Write `None` if unused.
+Tools, meaningful tasks/prompts, suggestions accepted or rejected, and how you
+verified the output. Write `None` if unused.

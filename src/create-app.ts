@@ -2,13 +2,11 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { SharedStorageBackend } from './storage/shared-storage.backend';
+import { Clock } from './common/clock';
+import { Database } from './database/database';
 
-// Separate apps have separate providers/queues; tests can share the storage fixture.
-export async function createApp(backend = new SharedStorageBackend()) {
-  const app = await NestFactory.create(AppModule.forBackend(backend), { logger: false });
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true, forbidNonWhitelisted: true, transform: false,
-  }));
+export async function createApp(db = new Database(), clock = new Clock()) {
+  const app = await NestFactory.create(AppModule.forDatabase(db, clock), { logger: false });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: false }));
   return app;
 }

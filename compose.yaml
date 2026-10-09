@@ -1,0 +1,21 @@
+name: senior-nestjs-exam
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: practical_exam
+      POSTGRES_USER: exam
+      POSTGRES_PASSWORD: exam_local_only
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - exam_pgdata:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exam -d practical_exam"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+volumes:
+  exam_pgdata:

@@ -2,18 +2,22 @@
   "name": "senior-nestjs-practical-exam",
   "version": "1.0.0",
   "private": true,
-  "description": "Scale a multi-tenant reservation API and defend the solution",
-  "engines": { "node": "^22.0.0 || ^24.0.0" },
+  "description": "Three focused tasks: rate limiting, caching, and N+1 queries",
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "ts-node src/main.ts",
     "test": "jest --runInBand",
     "test:smoke": "jest --runInBand test/smoke.e2e-spec.ts",
-    "test:regression": "jest --runInBand test/regression.e2e-spec.ts",
+    "test:tasks": "jest --runInBand test/rate-limit.e2e-spec.ts test/cache.e2e-spec.ts test/n-plus-one.e2e-spec.ts",
     "test:watch": "jest --watch",
-    "test:scalability": "jest --runInBand test/scalability.e2e-spec.ts",
-    "bench": "npm run build && node scripts/benchmark.mjs"
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "db:check": "node scripts/database.mjs",
+    "db:reset": "node scripts/database.mjs reset"
   },
   "dependencies": {
     "@nestjs/common": "11.2.7",
@@ -22,7 +26,8 @@
     "class-transformer": "0.5.1",
     "class-validator": "0.14.2",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@nestjs/testing": "11.2.7",
@@ -34,6 +39,7 @@
     "supertest": "7.1.4",
     "ts-jest": "29.4.5",
     "ts-node": "10.9.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "@types/pg": "8.23.1"
   }
 }
